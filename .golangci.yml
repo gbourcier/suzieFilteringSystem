@@ -1,0 +1,18 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+exclusions:
+  rules:
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+    - text: "Body\\.Close"
+      linters:
+        - errcheck

@@ -27,6 +27,12 @@ go.work.sum
 # env file
 .env
 
+# docs
+docs
+
+# dev harness fixtures (real, sensitive condo-board mail — never commit)
+/.fixtures/
+
 # Editor/IDE
 # .idea/
 # .vscode/

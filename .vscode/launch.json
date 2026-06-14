@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Dev: summarize fixtures (fr, gemma3:4b)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/devsummarize",
+      "args": [
+        "--fixtures", "${workspaceFolder}/.fixtures",
+        "--model", "gemma3:4b",
+        "--language", "fr",
+        "--show-body",
+        "--out", "${workspaceFolder}/.fixtures/_report.md"
+      ],
+      "env": { "LOG_LEVEL": "debug" }
+    },
+    {
+      "name": "Dev: summarize fixtures (en, mistral-nemo step-up)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/devsummarize",
+      "args": [
+        "--fixtures", "${workspaceFolder}/.fixtures",
+        "--model", "mistral-nemo",
+        "--language", "en",
+        "--out", "${workspaceFolder}/.fixtures/_report_en.md"
+      ]
+    },
+    {
+      "name": "Dev: summarize SINGLE file (prompt tinkering)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/devsummarize",
+      "args": ["--fixtures", "${input:emlPath}", "--show-body"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "emlPath",
+      "type": "promptString",
+      "description": "Path to a single .eml or .txt file to summarize"
+    }
+  ]
+}

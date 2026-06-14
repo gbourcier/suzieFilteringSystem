@@ -1,0 +1,26 @@
+From: Syndicat de copropriété <board@condo.tld>
+To: owner@example.com
+Subject: Documents relatifs à l'assemblée
+Date: Tue, 1 Jul 2025 09:00:00 -0400
+Message-Id: <docs-20250701@condo.tld>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="==boundary42=="
+
+--==boundary42==
+Content-Type: text/plain; charset=UTF-8
+
+Madame, Monsieur,
+
+Veuillez trouver ci-joint le procès-verbal de la dernière assemblée.
+
+Cordialement,
+Le Syndicat
+
+--==boundary42==
+Content-Type: application/pdf; name="pv-assemblee.pdf"
+Content-Disposition: attachment; filename="pv-assemblee.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJcOkw7zDtsO8CjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSPj4K
+
+--==boundary42==--
