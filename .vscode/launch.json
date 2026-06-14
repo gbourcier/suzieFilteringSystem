@@ -6,6 +6,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
+      "preLaunchTask": "setup: seed .fixtures from testdata",
       "program": "${workspaceFolder}/cmd/devsummarize",
       "args": [
         "--fixtures", "${workspaceFolder}/.fixtures",
@@ -21,6 +22,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
+      "preLaunchTask": "setup: seed .fixtures from testdata",
       "program": "${workspaceFolder}/cmd/devsummarize",
       "args": [
         "--fixtures", "${workspaceFolder}/.fixtures",
@@ -28,6 +30,22 @@
         "--language", "en",
         "--out", "${workspaceFolder}/.fixtures/_report_en.md"
       ]
+    },
+    {
+      "name": "Dev: summarize fixtures (fr, qwen2.5:14b)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "preLaunchTask": "setup: seed .fixtures from testdata",
+      "program": "${workspaceFolder}/cmd/devsummarize",
+      "args": [
+        "--fixtures", "${workspaceFolder}/.fixtures",
+        "--model", "qwen2.5:14b",
+        "--language", "fr",
+        "--show-body",
+        "--out", "${workspaceFolder}/.fixtures/_report_qwen.md"
+      ],
+      "env": { "LOG_LEVEL": "debug" }
     },
     {
       "name": "Dev: summarize SINGLE file (prompt tinkering)",

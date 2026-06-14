@@ -28,7 +28,7 @@ go.work.sum
 .env
 
 # docs
-docs
+/.docs/
 
 # dev harness fixtures (real, sensitive condo-board mail — never commit)
 /.fixtures/

@@ -16,7 +16,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/gbourcier/suzie/internal/llm"
@@ -119,7 +118,7 @@ func main() {
 	}
 
 	if *flagOut != "" {
-		if err := writeMarkdownReport(*flagOut, records, *flagModel, *flagLanguage, totalMS, meanMS); err != nil {
+		if err := writeMarkdownReport(*flagOut, records, *flagModel, *flagLanguage, meanMS); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not write report to %s: %v\n", *flagOut, err)
 		} else if !*flagJSON {
 			fmt.Printf("Report written to %s\n", *flagOut)
@@ -271,7 +270,7 @@ func printJSON(r record) {
 	fmt.Println(string(b))
 }
 
-func writeMarkdownReport(path string, records []record, modelName, language string, totalMS, meanMS int64) (retErr error) {
+func writeMarkdownReport(path string, records []record, modelName, language string, meanMS int64) (retErr error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -282,7 +281,6 @@ func writeMarkdownReport(path string, records []record, modelName, language stri
 		}
 	}()
 
-	// ew accumulates write errors so we don't check every Fprintf individually.
 	ew := &errWriter{w: f}
 
 	var nOK, nErr, nWarn int
@@ -298,59 +296,39 @@ func writeMarkdownReport(path string, records []record, modelName, language stri
 	}
 
 	ew.printf("# Dev Summarize Report\n\n")
-	ew.printf("**Model:** `%s`  **Language:** `%s`  **Generated:** %s\n\n",
+	ew.printf("**Model:** `%s` · **Language:** `%s` · **Generated:** %s\n\n",
 		modelName, language, time.Now().UTC().Format(time.RFC3339))
-	ew.printf("**Total:** %d  **OK:** %d  **Error:** %d  **Warn:** %d  "+
-		"**Total latency:** %dms  **Mean:** %dms\n\n",
-		len(records), nOK, nErr, nWarn, totalMS, meanMS)
+	ew.printf("%d processed · %d OK · %d errors · %d warnings · mean %dms\n\n",
+		len(records), nOK, nErr, nWarn, meanMS)
 
-	// Summary table
-	tw := tabwriter.NewWriter(f, 0, 0, 2, ' ', 0)
-	ew.fprintln(tw, "File\tSubject\tSummary\tAction\tDeadline\tTone\tChecks\tLatency")
-	ew.fprintln(tw, "----\t-------\t-------\t------\t--------\t----\t------\t-------")
 	for _, r := range records {
-		name := filepath.Base(r.File)
-		checks := "OK"
+		subj := r.Subject
+		if subj == "" {
+			subj = filepath.Base(r.File)
+		}
+		ew.printf("---\n\n**%s**\n\n", subj)
+
 		if r.ParseErr != "" {
-			ew.fprintf(tw, "%s\t%s\t(parse error)\t\t\t\t%s\t\n", name, r.Subject, r.ParseErr)
+			ew.printf("⚠️ Parse error: %s\n\n", r.ParseErr)
 			continue
 		}
-		if len(r.Checks) > 0 {
-			checks = strings.Join(r.Checks, "; ")
-		}
-		subj := truncStr(r.Subject, 40)
-		summ := truncStr(r.Summary.Text, 60)
-		ew.fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%dms\n",
-			name, subj, summ, r.Summary.Action, r.Summary.Deadline, r.Summary.Tone, checks, r.Debug.LatencyMS)
-	}
-	if err := tw.Flush(); err != nil && ew.err == nil {
-		ew.err = err
-	}
 
-	// Per-message detail
-	ew.printf("\n## Per-message detail\n\n")
-	for _, r := range records {
-		ew.printf("### %s\n\n", filepath.Base(r.File))
-		if r.ParseErr != "" {
-			ew.printf("**Parse error:** %s\n\n", r.ParseErr)
+		if r.Summary.Status == "error" {
+			ew.printf("⚠️ could not summarize\n\n")
 			continue
 		}
-		ew.printf("- **From:** %s\n", r.From)
-		ew.printf("- **Subject:** %s\n", r.Subject)
-		if r.HasAttach {
-			ew.printf("- **Attachment:** yes\n")
+
+		ew.printf("%s\n\n", r.Summary.Text)
+
+		meta := fmt.Sprintf("`%s` · `%s`", r.Summary.Action, r.Summary.Tone)
+		if r.Summary.Deadline != "" {
+			meta += " · 📅 " + r.Summary.Deadline
 		}
-		ew.printf("- **Summary:** %s\n", r.Summary.Text)
-		ew.printf("- **Action:** %s  **Deadline:** %s  **Tone:** %s\n",
-			r.Summary.Action, r.Summary.Deadline, r.Summary.Tone)
-		ew.printf("- **LLM:** %s  retried=%v  latency=%dms\n",
-			r.Summary.Status, r.Debug.Retried, r.Debug.LatencyMS)
+		meta += fmt.Sprintf(" · %dms", r.Debug.LatencyMS)
 		if len(r.Checks) > 0 {
-			ew.printf("- **Checks:** WARN: %s\n", strings.Join(r.Checks, "; "))
-		} else {
-			ew.printf("- **Checks:** OK\n")
+			meta += " · ⚠️ " + strings.Join(r.Checks, "; ")
 		}
-		ew.printf("\n")
+		ew.printf("%s\n\n", meta)
 	}
 
 	return ew.err
@@ -369,17 +347,6 @@ func (ew *errWriter) printf(format string, args ...any) {
 	}
 }
 
-func (ew *errWriter) fprintf(w io.Writer, format string, args ...any) {
-	if ew.err == nil {
-		_, ew.err = fmt.Fprintf(w, format, args...)
-	}
-}
-
-func (ew *errWriter) fprintln(w io.Writer, args ...any) {
-	if ew.err == nil {
-		_, ew.err = fmt.Fprintln(w, args...)
-	}
-}
 
 // resolveFiles returns all .eml and .txt files under root (or just root if it's a file).
 func resolveFiles(root string) ([]string, error) {
@@ -452,10 +419,3 @@ func normalizeModelTag(tag string) string {
 	return tag
 }
 
-func truncStr(s string, max int) string {
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	return string(runes[:max-3]) + "..."
-}

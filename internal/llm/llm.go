@@ -231,11 +231,24 @@ func systemPrompt(language string, strict bool) string {
 For each email, produce one neutral, factual sentence in %s describing what the sender is asking for or stating.
 Strip all emotional language, accusations, and rhetoric. Do not editorialize.
 If no concrete request exists, summarize the main topic.
-For the deadline field, extract any explicitly mentioned due date in YYYY-MM-DD format, or null if none.
-Output ONLY valid JSON matching the required schema.`, outputLang)
+
+For the "action_required" field use exactly one of these values:
+- "action": a resident or board member must do something physical (move a vehicle, write a cheque, clean a surface, attend a meeting, etc.)
+- "reply": the sender explicitly asks for a written response or confirmation
+- "fyi": informational only — no response or physical action is needed
+- "none": not addressed to residents (internal board note, automated message, etc.)
+
+For the "tone" field:
+- "heated": the email contains personal accusations, insults, threats, aggressive demands, or describes a conflict between individuals
+- "neutral": everything else
+
+For the "deadline" field: extract only an explicit response-by or must-act-by date in YYYY-MM-DD format. Do NOT use event dates (meeting dates, inspection dates, scheduled work dates) as deadlines — those are not deadlines for action. Use null if no response deadline exists.
+
+The summary sentence MUST be written in %s. Do not switch languages.
+Output ONLY valid JSON matching the required schema.`, outputLang, outputLang)
 
 	if strict {
-		p += "\n\nCRITICAL: Respond with a JSON object ONLY. No preamble, no explanation, no markdown."
+		p += "\n\nCRITICAL: Respond with a JSON object ONLY. No preamble, no explanation, no markdown. The summary field MUST be in " + outputLang + "."
 	}
 	return p
 }

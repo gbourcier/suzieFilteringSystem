@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "setup: seed .fixtures from testdata",
+      "type": "shell",
+      "command": "mkdir -p '${workspaceFolder}/.fixtures' && cp -n '${workspaceFolder}/testdata/'*.eml '${workspaceFolder}/.fixtures/' && echo 'Seeded .fixtures with testdata samples'",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "build: devsummarize",
+      "type": "shell",
+      "command": "CGO_ENABLED=0 go build -o '${workspaceFolder}/bin/devsummarize' '${workspaceFolder}/cmd/devsummarize'",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": ["$go"],
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    }
+  ]
+}
