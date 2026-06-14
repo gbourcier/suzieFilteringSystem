@@ -33,6 +33,7 @@ func New(cfg Config) (*Mailer, error) {
 	client, err := mail.NewClient(
 		cfg.Host,
 		mail.WithPort(cfg.Port),
+		mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover),
 		mail.WithUsername(cfg.User),
 		mail.WithPassword(cfg.Pass),
 		mail.WithTLSPortPolicy(mail.TLSMandatory),

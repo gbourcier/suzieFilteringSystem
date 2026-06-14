@@ -1,4 +1,4 @@
-// Package imap fetches complete messages from a mailbox without mutating it.
+// Package imap fetches complete messages and marks processed mail as seen.
 package imap
 
 import (
@@ -32,7 +32,15 @@ type RawMessage struct {
 	Raw []byte
 }
 
-// Fetcher opens one read-only IMAP connection per Fetch call.
+// FetchResult describes either a new-mail batch or a high-water baseline.
+type FetchResult struct {
+	UIDValidity uint32
+	LastUID     uint32
+	Baseline    bool
+	Messages    []RawMessage
+}
+
+// Fetcher opens one IMAP connection per operation.
 type Fetcher struct {
 	cfg  Config
 	dial dialFunc
@@ -42,9 +50,15 @@ type dialFunc func(context.Context) (session, error)
 
 type session interface {
 	Login(string, string) error
-	Select(string) (uint32, error)
+	Select(string, bool) (mailboxState, error)
 	FetchSince(uint32) ([]RawMessage, error)
+	MarkSeen(uint32) error
 	Logout() error
+}
+
+type mailboxState struct {
+	UIDValidity uint32
+	UIDNext     uint32
 }
 
 // New constructs a Fetcher.
@@ -54,48 +68,90 @@ func New(cfg Config) *Fetcher {
 	return f
 }
 
-// Fetch returns messages newer than sinceUID, or all messages after UIDVALIDITY changes.
+// Fetch returns only messages newer than sinceUID. On first use or after a
+// UIDVALIDITY change, it returns a baseline at UIDNEXT-1 without fetching mail.
 func (f *Fetcher) Fetch(
 	ctx context.Context,
 	knownUIDValidity, sinceUID uint32,
-) (uint32, []RawMessage, error) {
+) (FetchResult, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, err
+		return FetchResult{}, err
 	}
 	s, err := f.dial(ctx)
 	if err != nil {
-		return 0, nil, fmt.Errorf("connect IMAP: %w", err)
+		return FetchResult{}, fmt.Errorf("connect IMAP: %w", err)
 	}
 	defer func() { _ = s.Logout() }()
 
 	if err := s.Login(f.cfg.User, f.cfg.Pass); err != nil {
-		return 0, nil, fmt.Errorf("IMAP login: %w", err)
+		return FetchResult{}, fmt.Errorf("IMAP login: %w", err)
 	}
-	uidValidity, err := s.Select(f.cfg.Folder)
+	state, err := s.Select(f.cfg.Folder, true)
 	if err != nil {
-		return 0, nil, fmt.Errorf("select IMAP folder %q: %w", f.cfg.Folder, err)
+		return FetchResult{}, fmt.Errorf("select IMAP folder %q: %w", f.cfg.Folder, err)
 	}
 
-	start := firstUID(knownUIDValidity, uidValidity, sinceUID)
-	if start == 0 {
-		return uidValidity, nil, nil
+	if knownUIDValidity == 0 || knownUIDValidity != state.UIDValidity {
+		return FetchResult{
+			UIDValidity: state.UIDValidity,
+			LastUID:     latestUID(state.UIDNext),
+			Baseline:    true,
+		}, nil
 	}
+	if sinceUID == math.MaxUint32 {
+		return FetchResult{UIDValidity: state.UIDValidity, LastUID: sinceUID}, nil
+	}
+
+	start := sinceUID + 1
 	msgs, err := s.FetchSince(start)
 	if err != nil {
-		return 0, nil, fmt.Errorf("fetch IMAP messages: %w", err)
+		return FetchResult{}, fmt.Errorf("fetch IMAP messages: %w", err)
 	}
 	sort.Slice(msgs, func(i, j int) bool { return msgs[i].UID < msgs[j].UID })
-	return uidValidity, msgs, nil
+	return FetchResult{
+		UIDValidity: state.UIDValidity,
+		LastUID:     sinceUID,
+		Messages:    msgs,
+	}, nil
 }
 
-func firstUID(known, current, since uint32) uint32 {
-	if known != 0 && known != current {
-		return 1
+// MarkSeen adds the \Seen flag to uid after verifying the UIDVALIDITY.
+func (f *Fetcher) MarkSeen(ctx context.Context, expectedUIDValidity, uid uint32) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if since == math.MaxUint32 {
+	s, err := f.dial(ctx)
+	if err != nil {
+		return fmt.Errorf("connect IMAP: %w", err)
+	}
+	defer func() { _ = s.Logout() }()
+
+	if err := s.Login(f.cfg.User, f.cfg.Pass); err != nil {
+		return fmt.Errorf("IMAP login: %w", err)
+	}
+	state, err := s.Select(f.cfg.Folder, false)
+	if err != nil {
+		return fmt.Errorf("select IMAP folder %q: %w", f.cfg.Folder, err)
+	}
+	if state.UIDValidity != expectedUIDValidity {
+		return fmt.Errorf(
+			"UIDVALIDITY changed before marking UID %d seen: got %d, want %d",
+			uid,
+			state.UIDValidity,
+			expectedUIDValidity,
+		)
+	}
+	if err := s.MarkSeen(uid); err != nil {
+		return fmt.Errorf("mark UID %d seen: %w", uid, err)
+	}
+	return nil
+}
+
+func latestUID(uidNext uint32) uint32 {
+	if uidNext == 0 {
 		return 0
 	}
-	return since + 1
+	return uidNext - 1
 }
 
 func (f *Fetcher) dialSession(ctx context.Context) (session, error) {
@@ -143,12 +199,12 @@ func (s *imapSession) Login(user, pass string) error {
 	return s.client.Login(user, pass)
 }
 
-func (s *imapSession) Select(folder string) (uint32, error) {
-	status, err := s.client.Select(folder, true)
+func (s *imapSession) Select(folder string, readOnly bool) (mailboxState, error) {
+	status, err := s.client.Select(folder, readOnly)
 	if err != nil {
-		return 0, err
+		return mailboxState{}, err
 	}
-	return status.UidValidity, nil
+	return mailboxState{UIDValidity: status.UidValidity, UIDNext: status.UidNext}, nil
 }
 
 func (s *imapSession) FetchSince(first uint32) ([]RawMessage, error) {
@@ -191,6 +247,18 @@ func (s *imapSession) FetchSince(first uint32) ([]RawMessage, error) {
 		return nil, bodyErr
 	}
 	return result, nil
+}
+
+func (s *imapSession) MarkSeen(uid uint32) error {
+	seqSet := new(emersionimap.SeqSet)
+	seqSet.AddNum(uid)
+	item := emersionimap.FormatFlagsOp(emersionimap.AddFlags, true)
+	return s.client.UidStore(
+		seqSet,
+		item,
+		[]interface{}{emersionimap.SeenFlag},
+		nil,
+	)
 }
 
 func (s *imapSession) Logout() error {

@@ -13,6 +13,8 @@ import (
 )
 
 type fakeStore struct {
+	validity   uint32
+	lastUID    uint32
 	rows       []store.EmailRow
 	cursorUIDs []uint32
 	insertErr  error
@@ -20,10 +22,12 @@ type fakeStore struct {
 }
 
 func (f *fakeStore) LastUID(string) (uint32, uint32, error) {
-	return 7, 0, nil
+	return f.validity, f.lastUID, nil
 }
 
-func (f *fakeStore) SetLastUID(_ string, _ uint32, uid uint32) error {
+func (f *fakeStore) SetLastUID(_ string, validity, uid uint32) error {
+	f.validity = validity
+	f.lastUID = uid
 	f.cursorUIDs = append(f.cursorUIDs, uid)
 	return nil
 }
@@ -41,11 +45,21 @@ func (f *fakeStore) InsertEmail(row store.EmailRow) (bool, error) {
 }
 
 type fakeFetcher struct {
-	messages []mailimap.RawMessage
+	result      mailimap.FetchResult
+	seenUIDs    []uint32
+	markSeenErr error
 }
 
-func (f fakeFetcher) Fetch(context.Context, uint32, uint32) (uint32, []mailimap.RawMessage, error) {
-	return 7, f.messages, nil
+func (f *fakeFetcher) Fetch(context.Context, uint32, uint32) (mailimap.FetchResult, error) {
+	return f.result, nil
+}
+
+func (f *fakeFetcher) MarkSeen(_ context.Context, _ uint32, uid uint32) error {
+	if f.markSeenErr != nil {
+		return f.markSeenErr
+	}
+	f.seenUIDs = append(f.seenUIDs, uid)
+	return nil
 }
 
 type fakeLLM struct {
@@ -63,7 +77,14 @@ func (f *fakeLLM) Summarize(context.Context, llm.Input) (model.Summary, llm.RawD
 }
 
 func newTestJob(s *fakeStore, l *fakeLLM) *Job {
-	j := New(s, fakeFetcher{messages: []mailimap.RawMessage{{UID: 1, Raw: []byte("raw")}}}, l, Config{
+	if s.validity == 0 {
+		s.validity = 7
+	}
+	f := &fakeFetcher{result: mailimap.FetchResult{
+		UIDValidity: 7,
+		Messages:    []mailimap.RawMessage{{UID: 1, Raw: []byte("raw")}},
+	}}
+	j := New(s, f, l, Config{
 		Folder:          "INBOX",
 		ArchiveDir:      "/unused",
 		BodyCharLimit:   4000,
@@ -77,6 +98,29 @@ func newTestJob(s *fakeStore, l *fakeLLM) *Job {
 		return "/archive/message.eml", nil
 	}
 	return j
+}
+
+func TestRunInitializesBaselineWithoutProcessingBacklog(t *testing.T) {
+	s := &fakeStore{}
+	l := &fakeLLM{}
+	f := &fakeFetcher{result: mailimap.FetchResult{
+		UIDValidity: 42,
+		LastUID:     100,
+		Baseline:    true,
+	}}
+	j := New(s, f, l, Config{Folder: "INBOX/Board"})
+
+	result, err := j.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !result.Initialized || s.validity != 42 || s.lastUID != 100 {
+		t.Fatalf("result/store = %+v / %+v", result, s)
+	}
+	if len(s.rows) != 0 || l.calls != 0 || len(f.seenUIDs) != 0 {
+		t.Fatalf("baseline processed existing mail: rows=%d llm=%d seen=%v",
+			len(s.rows), l.calls, f.seenUIDs)
+	}
 }
 
 func TestRunFailOpenOnParseError(t *testing.T) {
@@ -145,6 +189,30 @@ func TestRunAdvancesCursorOnlyAfterInsert(t *testing.T) {
 	}
 }
 
+func TestRunAdvancesCursorOnlyAfterMarkSeen(t *testing.T) {
+	s := &fakeStore{}
+	l := &fakeLLM{}
+	j := newTestJob(s, l)
+	f := j.fetcher.(*fakeFetcher)
+	f.markSeenErr = errors.New("cannot set flag")
+	j.parse = func([]byte, int) (model.Parsed, error) {
+		return model.Parsed{
+			MessageID: "message@example.test",
+			From:      model.Address{Addr: "board@example.test"},
+		}, nil
+	}
+
+	if _, err := j.Run(context.Background()); err == nil {
+		t.Fatal("Run returned nil error on MarkSeen failure")
+	}
+	if len(s.rows) != 1 {
+		t.Fatalf("persisted rows = %d, want 1", len(s.rows))
+	}
+	if len(s.cursorUIDs) != 0 {
+		t.Fatalf("cursor advanced before MarkSeen: %+v", s.cursorUIDs)
+	}
+}
+
 func TestRunSkipsExistingMessageBeforeLLM(t *testing.T) {
 	s := &fakeStore{exists: true}
 	l := &fakeLLM{}
@@ -157,7 +225,12 @@ func TestRunSkipsExistingMessageBeforeLLM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if result.Duplicates != 1 || l.calls != 0 || len(s.cursorUIDs) != 1 {
-		t.Fatalf("result/calls/cursor = %+v/%d/%+v", result, l.calls, s.cursorUIDs)
+	f := j.fetcher.(*fakeFetcher)
+	if result.Duplicates != 1 ||
+		l.calls != 0 ||
+		len(f.seenUIDs) != 1 ||
+		len(s.cursorUIDs) != 1 {
+		t.Fatalf("result/calls/seen/cursor = %+v/%d/%+v/%+v",
+			result, l.calls, f.seenUIDs, s.cursorUIDs)
 	}
 }

@@ -37,7 +37,8 @@ type stateStore interface {
 }
 
 type fetcher interface {
-	Fetch(context.Context, uint32, uint32) (uint32, []mailimap.RawMessage, error)
+	Fetch(context.Context, uint32, uint32) (mailimap.FetchResult, error)
+	MarkSeen(context.Context, uint32, uint32) error
 }
 
 type summarizer interface {
@@ -61,11 +62,12 @@ type Job struct {
 
 // Result summarizes one poll run.
 type Result struct {
-	Fetched    int
-	Processed  int
-	Duplicates int
-	Errors     int
-	OutOfScope int
+	Initialized bool
+	Fetched     int
+	Processed   int
+	Duplicates  int
+	Errors      int
+	OutOfScope  int
 }
 
 // New constructs a poll job.
@@ -95,25 +97,35 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("read poll cursor: %w", err)
 	}
-	currentValidity, messages, err := j.fetcher.Fetch(ctx, knownValidity, lastUID)
+	fetched, err := j.fetcher.Fetch(ctx, knownValidity, lastUID)
 	if err != nil {
 		return Result{}, err
 	}
-	if knownValidity != 0 && knownValidity != currentValidity {
-		slog.Warn("IMAP UIDVALIDITY changed; resynchronizing mailbox",
+	if fetched.Baseline {
+		if err := j.store.SetLastUID(
+			j.cfg.Folder,
+			fetched.UIDValidity,
+			fetched.LastUID,
+		); err != nil {
+			return Result{}, fmt.Errorf("save mailbox baseline: %w", err)
+		}
+		slog.Info("mailbox baseline initialized; existing messages skipped",
 			"folder", j.cfg.Folder,
-			"old_uid_validity", knownValidity,
-			"new_uid_validity", currentValidity,
+			"uid_validity", fetched.UIDValidity,
+			"last_uid", fetched.LastUID,
 		)
+		return Result{Initialized: true}, nil
 	}
-	sort.Slice(messages, func(a, b int) bool { return messages[a].UID < messages[b].UID })
+	sort.Slice(fetched.Messages, func(a, b int) bool {
+		return fetched.Messages[a].UID < fetched.Messages[b].UID
+	})
 
-	result := Result{Fetched: len(messages)}
-	for _, message := range messages {
+	result := Result{Fetched: len(fetched.Messages)}
+	for _, message := range fetched.Messages {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		outcome, err := j.processOne(ctx, currentValidity, message)
+		outcome, err := j.processOne(ctx, fetched.UIDValidity, message)
 		if err != nil {
 			return result, fmt.Errorf("process UID %d: %w", message.UID, err)
 		}
@@ -160,6 +172,9 @@ func (j *Job) processOne(
 		return messageOutcome{}, err
 	}
 	if exists {
+		if err := j.fetcher.MarkSeen(ctx, uidValidity, message.UID); err != nil {
+			return messageOutcome{}, err
+		}
 		if err := j.store.SetLastUID(j.cfg.Folder, uidValidity, message.UID); err != nil {
 			return messageOutcome{}, err
 		}
@@ -221,6 +236,9 @@ func (j *Job) processOne(
 	if !inserted {
 		outcome.processed = 0
 		outcome.duplicate = 1
+	}
+	if err := j.fetcher.MarkSeen(ctx, uidValidity, message.UID); err != nil {
+		return messageOutcome{}, err
 	}
 	if err := j.store.SetLastUID(j.cfg.Folder, uidValidity, message.UID); err != nil {
 		return messageOutcome{}, err

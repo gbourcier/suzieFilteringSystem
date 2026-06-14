@@ -3,23 +3,26 @@ package imap
 import (
 	"context"
 	"errors"
-	"math"
 	"testing"
 )
 
 type fakeSession struct {
 	validity uint32
+	uidNext  uint32
 	msgs     []RawMessage
 	loginErr error
 	since    uint32
+	readOnly bool
+	seenUIDs []uint32
 }
 
 func (f *fakeSession) Login(string, string) error {
 	return f.loginErr
 }
 
-func (f *fakeSession) Select(string) (uint32, error) {
-	return f.validity, nil
+func (f *fakeSession) Select(_ string, readOnly bool) (mailboxState, error) {
+	f.readOnly = readOnly
+	return mailboxState{UIDValidity: f.validity, UIDNext: f.uidNext}, nil
 }
 
 func (f *fakeSession) FetchSince(since uint32) ([]RawMessage, error) {
@@ -27,36 +30,70 @@ func (f *fakeSession) FetchSince(since uint32) ([]RawMessage, error) {
 	return f.msgs, nil
 }
 
+func (f *fakeSession) MarkSeen(uid uint32) error {
+	f.seenUIDs = append(f.seenUIDs, uid)
+	return nil
+}
+
 func (f *fakeSession) Logout() error {
 	return nil
 }
 
-func TestFirstUID(t *testing.T) {
-	tests := []struct {
-		name                 string
-		known, current, last uint32
-		want                 uint32
-	}{
-		{name: "initial sync", current: 7, want: 1},
-		{name: "same validity resumes", known: 7, current: 7, last: 12, want: 13},
-		{name: "changed validity resyncs", known: 7, current: 8, last: 12, want: 1},
-		{name: "maximum UID has no successor", known: 7, current: 7, last: math.MaxUint32, want: 0},
+func TestLatestUID(t *testing.T) {
+	if got := latestUID(635); got != 634 {
+		t.Fatalf("latestUID = %d, want 634", got)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := firstUID(tc.known, tc.current, tc.last); got != tc.want {
-				t.Fatalf("firstUID = %d, want %d", got, tc.want)
-			}
-		})
+	if got := latestUID(0); got != 0 {
+		t.Fatalf("latestUID(0) = %d, want 0", got)
 	}
 }
 
-func TestFetchUsesValidityDecisionAndSorts(t *testing.T) {
+func TestFetchBaselinesWithoutFetchingExistingMail(t *testing.T) {
+	s := &fakeSession{validity: 8, uidNext: 635}
+	f := &Fetcher{
+		cfg: Config{User: "user", Pass: "pass", Folder: "INBOX"},
+		dial: func(context.Context) (session, error) {
+			return s, nil
+		},
+	}
+
+	result, err := f.Fetch(context.Background(), 0, 0)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if !result.Baseline || result.UIDValidity != 8 || result.LastUID != 634 {
+		t.Fatalf("baseline result = %+v", result)
+	}
+	if s.since != 0 || !s.readOnly {
+		t.Fatalf("baseline fetched mail or selected writable: %+v", s)
+	}
+}
+
+func TestFetchBaselinesAfterUIDValidityChange(t *testing.T) {
+	s := &fakeSession{validity: 8, uidNext: 40}
+	f := &Fetcher{
+		cfg: Config{User: "user", Pass: "pass", Folder: "INBOX"},
+		dial: func(context.Context) (session, error) {
+			return s, nil
+		},
+	}
+
+	result, err := f.Fetch(context.Background(), 7, 99)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if !result.Baseline || result.LastUID != 39 || s.since != 0 {
+		t.Fatalf("validity-change result = %+v, since=%d", result, s.since)
+	}
+}
+
+func TestFetchReturnsOnlyNewMailAndSorts(t *testing.T) {
 	s := &fakeSession{
 		validity: 8,
+		uidNext:  104,
 		msgs: []RawMessage{
-			{UID: 3, Raw: []byte("three")},
-			{UID: 1, Raw: []byte("one")},
+			{UID: 103, Raw: []byte("three")},
+			{UID: 101, Raw: []byte("one")},
 		},
 	}
 	f := &Fetcher{
@@ -66,15 +103,41 @@ func TestFetchUsesValidityDecisionAndSorts(t *testing.T) {
 		},
 	}
 
-	validity, msgs, err := f.Fetch(context.Background(), 7, 99)
+	result, err := f.Fetch(context.Background(), 8, 100)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if validity != 8 || s.since != 1 {
-		t.Fatalf("validity/since = %d/%d, want 8/1", validity, s.since)
+	if result.Baseline || result.UIDValidity != 8 || s.since != 101 {
+		t.Fatalf("result/since = %+v/%d", result, s.since)
 	}
-	if len(msgs) != 2 || msgs[0].UID != 1 || msgs[1].UID != 3 {
-		t.Fatalf("messages = %+v, want sorted UIDs 1,3", msgs)
+	if len(result.Messages) != 2 ||
+		result.Messages[0].UID != 101 ||
+		result.Messages[1].UID != 103 {
+		t.Fatalf("messages = %+v, want sorted UIDs 101,103", result.Messages)
+	}
+}
+
+func TestMarkSeenUsesWritableMailboxAndChecksValidity(t *testing.T) {
+	s := &fakeSession{validity: 8, uidNext: 102}
+	f := &Fetcher{
+		cfg: Config{User: "user", Pass: "pass", Folder: "INBOX"},
+		dial: func(context.Context) (session, error) {
+			return s, nil
+		},
+	}
+
+	if err := f.MarkSeen(context.Background(), 8, 101); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	if s.readOnly || len(s.seenUIDs) != 1 || s.seenUIDs[0] != 101 {
+		t.Fatalf("MarkSeen session = %+v", s)
+	}
+
+	if err := f.MarkSeen(context.Background(), 7, 102); err == nil {
+		t.Fatal("MarkSeen returned nil on UIDVALIDITY mismatch")
+	}
+	if len(s.seenUIDs) != 1 {
+		t.Fatalf("mismatched validity marked mail seen: %+v", s.seenUIDs)
 	}
 }
 
@@ -85,7 +148,7 @@ func TestFetchPropagatesLoginFailure(t *testing.T) {
 			return s, nil
 		},
 	}
-	if _, _, err := f.Fetch(context.Background(), 0, 0); err == nil {
+	if _, err := f.Fetch(context.Background(), 0, 0); err == nil {
 		t.Fatal("Fetch returned nil error on login failure")
 	}
 }

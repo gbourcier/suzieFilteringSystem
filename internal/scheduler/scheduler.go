@@ -111,6 +111,7 @@ func (s *Scheduler) RunPoll(ctx context.Context) bool {
 			return
 		}
 		slog.Info("poll job complete",
+			"initialized", result.Initialized,
 			"fetched", result.Fetched,
 			"processed", result.Processed,
 			"duplicates", result.Duplicates,

@@ -4,7 +4,8 @@
 in-scope mail with a local Ollama model, and sends one weekly digest.
 
 Message contents stay on the host. The service never deletes, moves, replies
-to, or marks source mail as read.
+to, or forwards source mail. It marks each new message as read only after the
+message has been archived and persisted.
 
 ## Quickstart
 
@@ -26,9 +27,11 @@ docker compose up -d digestd
 docker compose logs -f digestd
 ```
 
-Pull the model before starting `digestd`; its first startup poll begins
-immediately. Weekly digests only run on
-`DIGEST_SCHEDULE`; startup never sends one off-schedule.
+Pull the model before starting `digestd`. On first startup, the service records
+the folder's current high-water UID without fetching or changing existing mail.
+Only messages arriving after that baseline are processed and marked read.
+Weekly digests only run on `DIGEST_SCHEDULE`; startup never sends one
+off-schedule.
 
 ## Persistent Data
 
@@ -54,9 +57,9 @@ its root before starting the service.
 
 ## Operations
 
-The first model pull is roughly 9 GB. On the CPU-only lab box, the first poll
-over a large backlog can run for hours. Processing is sequential and the UID
-cursor advances after each durable row, so restarts resume safely.
+The first model pull is roughly 9 GB. Processing is sequential, and the UID
+cursor advances only after each new message is durably stored and marked read,
+so restarts resume safely without consuming the existing mailbox backlog.
 
 Watch memory use during the first inference. The 14B model is expected to use
 roughly 10-11 GB on a 16 GB host. If the host is close to OOM, reduce
