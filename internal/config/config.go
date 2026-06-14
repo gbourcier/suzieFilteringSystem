@@ -11,11 +11,11 @@ import (
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
-	IMAPHost     string
-	IMAPPort     int
-	IMAPUser     string
-	IMAPPass     string
-	IMAPFolder   string
+	IMAPHost      string
+	IMAPPort      int
+	IMAPUser      string
+	IMAPPass      string
+	IMAPFolder    string
 	IMAPAllowlist []string // empty = allowlist off
 
 	SMTPHost string
@@ -27,6 +27,7 @@ type Config struct {
 
 	OllamaURL   string
 	OllamaModel string
+	LLMTimeout  time.Duration
 
 	SummaryLanguage string
 	PollSchedule    string
@@ -97,6 +98,14 @@ func Load() (*Config, error) {
 
 	c.OllamaURL = required("OLLAMA_URL")
 	c.OllamaModel = required("OLLAMA_MODEL")
+	c.LLMTimeout = 10 * time.Minute
+	if raw := os.Getenv("LLM_TIMEOUT"); raw != "" {
+		timeout, err := time.ParseDuration(raw)
+		if err != nil || timeout <= 0 {
+			return nil, fmt.Errorf("invalid LLM_TIMEOUT %q: must be a positive Go duration", raw)
+		}
+		c.LLMTimeout = timeout
+	}
 
 	c.SummaryLanguage = optStr("SUMMARY_LANGUAGE", "fr")
 	c.PollSchedule = optStr("POLL_SCHEDULE", "0 7 * * *")
@@ -143,6 +152,7 @@ func (c *Config) Redacted() map[string]any {
 		"digest_to":        c.DigestTo,
 		"ollama_url":       c.OllamaURL,
 		"ollama_model":     c.OllamaModel,
+		"llm_timeout":      c.LLMTimeout.String(),
 		"summary_language": c.SummaryLanguage,
 		"poll_schedule":    c.PollSchedule,
 		"digest_schedule":  c.DigestSchedule,

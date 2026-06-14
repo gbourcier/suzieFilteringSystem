@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<body style="margin:0;background:#f4f5f7;color:#20242a;font-family:Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:20px 12px;">
+  <h1 style="font-size:22px;font-weight:600;margin:0 0 6px;">Weekly email digest</h1>
+  <p style="color:#626a73;font-size:14px;margin:0 0 20px;">Jun 1, 2026 08:00 UTC to Jun 8, 2026 08:00 UTC</p>
+  
+  <div style="background:#fff;border:1px solid #dde1e6;border-radius:10px;padding:18px;">
+    No messages were received during this period.
+  </div>
+  
+</div>
+</body>
+</html>

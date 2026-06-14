@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<body style="margin:0;background:#f4f5f7;color:#20242a;font-family:Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:20px 12px;">
+  <h1 style="font-size:22px;font-weight:600;margin:0 0 6px;">Weekly email digest</h1>
+  <p style="color:#626a73;font-size:14px;margin:0 0 20px;">Jun 1, 2026 08:00 EST to Jun 8, 2026 08:00 EST</p>
+  
+  
+  <div style="background:#fff;border:1px solid #dde1e6;border-radius:10px;padding:16px;margin:0 0 14px;">
+    <div style="color:#626a73;font-size:13px;margin-bottom:7px;">Jun 1, 2026 09:00 | Board &lt;board@example.test&gt;</div>
+    <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Meeting &lt;details&gt;</div>
+    <div style="font-size:15px;line-height:1.45;margin-bottom:12px;">The board requests confirmation.</div>
+    <div style="font-size:13px;line-height:1.8;">
+      <span style="display:inline-block;background:#edf1f5;border-radius:12px;padding:1px 8px;margin-right:5px;">Action: reply</span>
+      <span style="display:inline-block;background:#fff4d6;border-radius:12px;padding:1px 8px;margin-right:5px;">Deadline: 2026-06-05</span>
+      <span style="display:inline-block;background:#fbe4e4;color:#7b2d2d;border-radius:12px;padding:1px 8px;margin-right:5px;">Tone: heated</span>
+      
+      
+    </div>
+    <div style="color:#626a73;font-size:12px;line-height:1.4;margin-top:12px;overflow-wrap:anywhere;">Original: /data/archive/2026/06/one.eml</div>
+  </div>
+  
+  <div style="background:#fff;border:1px solid #dde1e6;border-radius:10px;padding:16px;margin:0 0 14px;">
+    <div style="color:#626a73;font-size:13px;margin-bottom:7px;">Jun 1, 2026 10:00 | other@example.test</div>
+    <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Automated notice</div>
+    <div style="font-size:15px;line-height:1.45;margin-bottom:12px;">could not summarize - read original</div>
+    <div style="font-size:13px;line-height:1.8;">
+      <span style="display:inline-block;background:#edf1f5;border-radius:12px;padding:1px 8px;margin-right:5px;">Action: none</span>
+      
+      <span style="display:inline-block;background:#edf1f5;border-radius:12px;padding:1px 8px;margin-right:5px;">Tone: neutral</span>
+      <span style="display:inline-block;background:#fbe4e4;color:#7b2d2d;border-radius:12px;padding:1px 8px;">Summary error</span>
+      <span style="display:inline-block;background:#edf1f5;border-radius:12px;padding:1px 8px;">Out of scope</span>
+    </div>
+    <div style="color:#626a73;font-size:12px;line-height:1.4;margin-top:12px;overflow-wrap:anywhere;">Original: /data/archive/2026/06/two.eml</div>
+  </div>
+  
+  
+</div>
+</body>
+</html>

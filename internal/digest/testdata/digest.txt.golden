@@ -1,0 +1,16 @@
+Weekly email digest
+Jun 1, 2026 08:00 EST to Jun 8, 2026 08:00 EST
+
+---
+Jun 1, 2026 09:00 | Board <board@example.test>
+Meeting <details>
+The board requests confirmation.
+Action: reply | Deadline: 2026-06-05 | Tone: heated
+Original: /data/archive/2026/06/one.eml
+
+---
+Jun 1, 2026 10:00 | other@example.test
+Automated notice
+could not summarize - read original
+Action: none | Tone: neutral | Summary error | Out of scope
+Original: /data/archive/2026/06/two.eml

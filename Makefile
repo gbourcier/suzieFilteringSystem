@@ -25,7 +25,7 @@ run: build
 # Run the dev summarization harness against .fixtures/
 # Usage: make dev-summarize
 #        make dev-summarize MODEL=mistral-nemo LANG=en
-MODEL  ?= gemma3:4b
+MODEL  ?= qwen2.5:14b
 LANG   ?= fr
 REPORT ?= .fixtures/_report.md
 
@@ -47,4 +47,4 @@ down:
 	docker compose down
 
 pull-model:
-	docker compose exec ollama ollama pull $(OLLAMA_MODEL)
+	docker compose exec ollama ollama pull $(MODEL)

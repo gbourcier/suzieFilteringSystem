@@ -26,7 +26,7 @@ import (
 var (
 	flagFixtures    = flag.String("fixtures", "./.fixtures", "dir of .eml (recurses); or a single .eml/.txt path")
 	flagOllamaURL   = flag.String("ollama-url", "http://localhost:11434", "host Ollama endpoint")
-	flagModel       = flag.String("model", "gemma3:4b", "Ollama model tag")
+	flagModel       = flag.String("model", "qwen2.5:14b", "Ollama model tag")
 	flagLanguage    = flag.String("language", "fr", "summary output language (fr|en)")
 	flagBodyLimit   = flag.Int("body-char-limit", 4000, "truncation budget passed to parse.Message")
 	flagTimeout     = flag.Duration("timeout", 10*time.Minute, "per-message LLM timeout")
@@ -418,4 +418,3 @@ func normalizeModelTag(tag string) string {
 	}
 	return tag
 }
-
